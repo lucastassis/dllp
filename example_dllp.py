@@ -3,10 +3,10 @@ import pandas as pd
 import torch
 from net import MLPBatchAvg
 from loader import LLPDataset
-from eval import eval_dllp
 from train import train_dllp
 from sklearn.datasets import make_blobs
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 np.random.seed(42)
 
@@ -16,17 +16,20 @@ X, y = make_blobs(n_samples=1000, n_features=2, centers=3)
 # generate bags randomly
 bags = np.random.randint(0, 5, size=len(X))
 
-# create dataframe (LLPDataset expects a dataframe as input, but this can be modified easily)
-data_df = pd.DataFrame(X, columns=['f0', 'f1'])
-data_df['target'] = y
-data_df['bag'] = bags
+# split data
+X_train, X_test, y_train, y_test, bags_train, bags_test = train_test_split(X, y, bags, test_size=0.2)
 
-# define train/test datasets and dataloader
-train_df, test_df = train_test_split(data_df, test_size=0.2)
-train_dataset = LLPDataset(data_df=train_df)
+# create bag proportions train
+proportions = []
+for b in np.unique(bags_train):
+    idx = np.where(bags_train == b)[0]
+    bag_proportions = np.unique(y[idx], return_counts=True)[1] / len(idx)
+    proportions.append(bag_proportions)
+proportions = np.vstack(proportions)
+
+# create train dataset
+train_dataset = LLPDataset(X=X_train, bags=bags_train, proportions=proportions)
 train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=1) # batch_size=1 because DLLP paper suggests bag = batch
-test_dataset = LLPDataset(data_df=test_df)
-test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=1)
 
 # define DLLP model
 model = MLPBatchAvg(in_features=2, out_features=3, hidden_layer_sizes=(100,))
@@ -38,5 +41,10 @@ model.to(device)
 train_dllp(model=model, optimizer=optimizer, n_epochs=100, loss_fc=loss_fc, data_loader=train_dataloader, device=device)
 
 # eval model
-metrics = eval_dllp(model=model, data_loader=test_dataloader, device=device)
-print(metrics)
+model.eval()
+with torch.no_grad():
+    X_test = torch.tensor(X_test).to(device)
+    _, outputs = model(X_test)
+    y_pred = outputs.argmax(dim=1).cpu().tolist()
+acc = accuracy_score(y_test, y_pred)
+print(f'accuracy: {acc * 100}%')
