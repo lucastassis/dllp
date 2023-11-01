@@ -23,7 +23,7 @@ X_train, X_test, y_train, y_test, bags_train, bags_test = train_test_split(X, y,
 proportions = []
 for b in np.unique(bags_train):
     idx = np.where(bags_train == b)[0]
-    bag_proportions = np.unique(y[idx], return_counts=True)[1] / len(idx)
+    bag_proportions = np.unique(y_train[idx], return_counts=True)[1] / len(idx)
     proportions.append(bag_proportions)
 proportions = np.vstack(proportions)
 
